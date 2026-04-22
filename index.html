@@ -79,7 +79,7 @@ const INIT_LIZARDS = [{ id:"1", name:"도마뱀 1호", emoji:"🦎", foods:["귀
 
 // ── AGE CALCULATOR
 function calcAge(birthDateStr) {
-  if (!birthDateStr) return null;
+  if (!birthDateStr || birthDateStr==="unknown") return null;
   const birth = new Date(birthDateStr + "T00:00:00");
   if (isNaN(birth)) return null;
   const now = new Date();
@@ -198,9 +198,8 @@ function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards }
         <div style={sec}>
           <span style={secLabel}>활동</span>
           <div style={{display:"flex",gap:8}}>
-            {CHECKS.map(it=>{
-              const isGreen = it.key==="feces"||it.key==="water";
-              const activeBg = isGreen ? C.accentDark : C.text;
+            {CHECKS.map((it,i)=>{
+              const activeBg = i%2===0 ? C.text : C.accentDark;
               return(
                 <div key={it.key} onClick={()=>u({[it.key]:!lg[it.key]})}
                   style={{flex:1,padding:"14px 8px",borderRadius:5,background:lg[it.key]?activeBg:C.bg,cursor:"pointer",textAlign:"center",border:`1px solid ${lg[it.key]?activeBg:C.border}`,transition:"all 0.15s"}}>
@@ -288,21 +287,31 @@ function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards }
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
               <span style={{fontSize:13,color:C.textMuted}}>사진 추가 ({(lg.photos||[]).length}/4)</span>
-              <input type="file" accept="image/*" onChange={e=>{
-                const file=e.target.files?.[0]; if(!file) return;
-                const reader=new FileReader();
-                reader.onload=(ev)=>u({photos:[...(lg.photos||[]),ev.target.result]});
-                reader.readAsDataURL(file);
+              <input type="file" accept="image/*" multiple onChange={e=>{
+                const files = Array.from(e.target.files||[]);
+                const remaining = 4 - (lg.photos||[]).length;
+                const selected = files.slice(0, remaining);
+                if (!selected.length) return;
+                Promise.all(selected.map(file=>new Promise(res=>{
+                  const reader = new FileReader();
+                  reader.onload = ev => res(ev.target.result);
+                  reader.readAsDataURL(file);
+                }))).then(results => u({photos:[...(lg.photos||[]),...results]}));
               }} style={{display:"none"}}/>
             </label>
           )}
+        </div>
+        {/* 완료 버튼 */}
+        <div style={{padding:"16px 22px 4px"}}>
+          <button onClick={onClose}
+            style={{width:"100%",background:C.accentDark,color:"#fff",border:"none",borderRadius:8,padding:"14px",fontSize:15,cursor:"pointer",fontFamily:FT,fontWeight:600,letterSpacing:"0.02em"}}>
+            완료
+          </button>
         </div>
       </div>
     </div>
   );
 }
-
-// ── DIARY VIEW
 function DiaryView({ lizards, logs, activeLizard }) {
   const [selYear, setSelYear] = useState(new Date().getFullYear());
   const [selMonth, setSelMonth] = useState(new Date().getMonth());
@@ -438,10 +447,9 @@ function CalendarView({ lizards, logs, activeLizard, onUpdate, calYear, calMonth
             </button>
           </div>
           <div style={{display:"flex",gap:5,padding:"10px 14px 12px"}}>
-            {QUICK.map(it=>{
+            {QUICK.map((it,i)=>{
               const on=todayLog[it.key];
-              const isGreen = it.key==="feces"||it.key==="water";
-              const activeBg = isGreen ? C.accentDark : C.text;
+              const activeBg = i%2===0 ? C.text : C.accentDark;
               return(
                 <div key={it.key} onClick={()=>onUpdate(activeLizard.id,todayKey,{[it.key]:!on})}
                   style={{flex:1,padding:"9px 3px",borderRadius:5,background:on?activeBg:C.ivory,cursor:"pointer",textAlign:"center",border:`1px solid ${on?activeBg:C.border}`,transition:"all 0.15s"}}>
@@ -571,15 +579,15 @@ function StatsView({ lizards, logs, activeLizard, calYear, calMonth, prevMonth, 
               return(
                 <div key={dkey} style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"4px 1px",borderRadius:10,background:isT?"rgba(61,107,67,0.08)":"transparent"}}>
                   <span style={{fontSize:10,color:isT?C.accentDark:C.textMuted,fontWeight:isT?700:400,lineHeight:1.4,marginBottom:3}}>{day}</span>
-                  <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2,marginTop:1}}>
                     {HEAT_ITEMS.map(item=>{
                       const on = lg[item.key];
                       if (!on) return null;
                       if (item.grad) return(
-                        <div key={item.key} style={{width:6,height:6,borderRadius:"50%",background:"linear-gradient(135deg,#e879a0,#a855f7)",flexShrink:0}}/>
+                        <div key={item.key} style={{width:5,height:5,borderRadius:"50%",background:"linear-gradient(135deg,#e879a0,#a855f7)"}}/>
                       );
                       return(
-                        <div key={item.key} style={{width:6,height:6,borderRadius:"50%",background:item.color,flexShrink:0}}/>
+                        <div key={item.key} style={{width:5,height:5,borderRadius:"50%",background:item.color}}/>
                       );
                     })}
                   </div>
@@ -682,14 +690,65 @@ function ManageView({ lizards, setLizards, activeLid, setActiveLid }) {
   );
 }
 
+// ── DATE INPUT COMPONENT
+function DateInput({ value, onChange }) {
+  const isUnknown = value === "unknown";
+  const parts = (!isUnknown && value) ? value.split("-") : ["", "", ""];
+  const [y, setY] = useState(parts[0]);
+  const [m, setM] = useState(parts[1]);
+  const [d, setD] = useState(parts[2]);
+
+  const save = (ny, nm, nd) => {
+    if (ny && nm && nd && ny.length >= 4) {
+      onChange(`${ny.padStart(4,"0")}-${nm.padStart(2,"0")}-${nd.padStart(2,"0")}`);
+    }
+  };
+
+  const numInp = {
+    background:"#faf8f4", border:"1px solid #e2ddd4", borderRadius:4,
+    padding:"5px 4px", fontSize:12, color:"#2c2417",
+    fontFamily:"'Noto Sans KR',sans-serif", outline:"none",
+    textAlign:"center", boxSizing:"border-box"
+  };
+
+  if (isUnknown) return (
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <span style={{fontSize:11,color:"#8c7f6e",fontFamily:"'Noto Sans KR',sans-serif"}}>불명</span>
+      <button onClick={()=>onChange("")}
+        style={{background:"none",border:"none",fontSize:10,color:"#b8aa98",cursor:"pointer",textDecoration:"underline",padding:0}}>취소</button>
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:5}}>
+      <div style={{display:"flex",alignItems:"center",gap:3}}>
+        <input placeholder="년" value={y} maxLength={4}
+          onChange={e=>{setY(e.target.value); save(e.target.value,m,d);}}
+          style={{...numInp, width:"50px"}}/>
+        <span style={{fontSize:11,color:"#b8aa98",flexShrink:0}}>/</span>
+        <input placeholder="월" value={m} maxLength={2}
+          onChange={e=>{setM(e.target.value); save(y,e.target.value,d);}}
+          style={{...numInp, width:"28px"}}/>
+        <span style={{fontSize:11,color:"#b8aa98",flexShrink:0}}>/</span>
+        <input placeholder="일" value={d} maxLength={2}
+          onChange={e=>{setD(e.target.value); save(y,m,e.target.value);}}
+          style={{...numInp, width:"28px"}}/>
+      </div>
+      <button onClick={()=>onChange("unknown")}
+        style={{background:"none",border:"none",fontSize:10,color:"#b8aa98",cursor:"pointer",textDecoration:"underline",padding:0,textAlign:"left",fontFamily:"'Noto Sans KR',sans-serif"}}>불명으로 설정</button>
+    </div>
+  );
+}
+
 // ── INLINE PASSPORT CARD
 function InlinePassportCard({ lizard, setLizards, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [newFood, setNewFood] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const upd = (patch) => setLizards(prev=>prev.map(l=>l.id===lizard.id?{...l,...patch}:l));
   const age = calcAge(lizard.birthDate);
   const GENDERS = [{val:"male",label:"수컷"},{val:"female",label:"암컷"},{val:"unknown",label:"불명"}];
-  const genderLabel = {male:"♂ 수컷",female:"♀ 암컷",unknown:"불명","":"미입력"}[lizard.gender||""];
+  const genderLabel = {male:"♂ 수컷",female:"♀ 암컷",unknown:"성별 불명","":"성별 미입력"}[lizard.gender||""];
 
   const handlePhoto = (e) => {
     const file = e.target.files?.[0]; if(!file) return;
@@ -737,7 +796,13 @@ function InlinePassportCard({ lizard, setLizards, onDelete }) {
               ):(
                 <div style={{fontFamily:FT,fontSize:22,fontWeight:600,color:C.text,lineHeight:1.1,marginBottom:4}}>{lizard.name}</div>
               )}
-              {age&&<div style={{display:"inline-block",background:C.ivoryDark,borderRadius:4,padding:"2px 8px",fontSize:11,color:C.textMuted,marginBottom:8,fontFamily:FB}}>생후 {age}</div>}
+              {age&&<div style={{display:"inline-block",background:C.ivoryDark,borderRadius:4,padding:"2px 8px",fontSize:11,color:C.textMuted,marginBottom:4,fontFamily:FB}}>생후 {age}</div>}
+              {lizard.adoptDate&&lizard.adoptDate!=="unknown"&&(()=>{
+                const diff = Math.floor((new Date()-new Date(lizard.adoptDate+"T00:00:00"))/(1000*60*60*24));
+                return diff>=0?(
+                  <div style={{display:"block",fontSize:11,color:C.textMuted,fontFamily:FB,marginBottom:8}}>함께한 지 <span style={{fontWeight:600,color:C.accentDark}}>{diff.toLocaleString()}</span>일</div>
+                ):null;
+              })()}
               {editing?(
                 <div style={{display:"flex",gap:5,marginTop:4}}>
                   {GENDERS.map(g=>(
@@ -758,12 +823,6 @@ function InlinePassportCard({ lizard, setLizards, onDelete }) {
               style={{background:editing?C.text:C.surface,color:editing?"#fff":C.textMuted,border:`1px solid ${editing?C.text:C.border}`,borderRadius:4,padding:"5px 12px",fontSize:11,cursor:"pointer",fontFamily:FB,fontWeight:editing?600:400}}>
               {editing?"✓ 완료":"편집"}
             </button>
-            {editing&&(
-              <button onClick={onDelete}
-                style={{background:"none",color:C.red,border:`1px solid ${C.red}`,borderRadius:4,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:FB}}>
-                삭제
-              </button>
-            )}
           </div>
         </div>
 
@@ -772,14 +831,14 @@ function InlinePassportCard({ lizard, setLizards, onDelete }) {
           {[{label:"생년월일",key:"birthDate"},{label:"입양일",key:"adoptDate"}].map(({label,key})=>(
             <div key={key}>
               <div style={{fontSize:9,color:C.textLight,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:FB}}>{label}</div>
-              {editing?(
-                <input type="date" value={lizard[key]||""} onChange={e=>upd({[key]:e.target.value})}
-                  style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:4,padding:"4px 8px",fontSize:11,color:C.text,fontFamily:FB,outline:"none",width:"100%",boxSizing:"border-box"}}/>
-              ):(
-                <div style={{fontSize:12,color:C.text,fontFamily:FT}}>
-                  {lizard[key]?lizard[key].replaceAll("-","."):<span style={{color:C.textLight}}>—</span>}
-                </div>
-              )}
+              {editing
+                ? <DateInput value={lizard[key]||""} onChange={v=>upd({[key]:v})}/>
+                : <div style={{fontSize:12,color:C.text,fontFamily:FT}}>
+                    {lizard[key]==="unknown"
+                      ? <span style={{color:C.textMuted}}>불명</span>
+                      : lizard[key]?lizard[key].replaceAll("-","."):<span style={{color:C.textLight}}>—</span>}
+                  </div>
+              }
             </div>
           ))}
         </div>
@@ -807,6 +866,30 @@ function InlinePassportCard({ lizard, setLizards, onDelete }) {
             <button onClick={addFood} style={{background:C.accentDark,color:"#fff",border:"none",borderRadius:12,padding:"9px 16px",fontSize:13,cursor:"pointer",fontFamily:FB,fontWeight:600}}>추가</button>
           </div>
         )}
+
+        {/* 삭제 버튼 — 하단 */}
+        <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
+          {confirmDelete ? (
+            <div style={{background:C.ivory,borderRadius:8,padding:"14px 16px",textAlign:"center"}}>
+              <div style={{fontSize:13,color:C.text,fontFamily:FT,marginBottom:12}}>정말로 삭제하시겠습니까?</div>
+              <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+                <button onClick={()=>{setConfirmDelete(false);onDelete();}}
+                  style={{background:C.red,color:"#fff",border:"none",borderRadius:4,padding:"7px 20px",fontSize:13,cursor:"pointer",fontFamily:FB,fontWeight:600}}>
+                  네, 삭제합니다
+                </button>
+                <button onClick={()=>setConfirmDelete(false)}
+                  style={{background:C.surface,color:C.textMuted,border:`1px solid ${C.border}`,borderRadius:4,padding:"7px 20px",fontSize:13,cursor:"pointer",fontFamily:FB}}>
+                  아니오
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setConfirmDelete(true)}
+              style={{background:"none",color:C.textLight,border:"none",fontSize:12,cursor:"pointer",fontFamily:FB,textDecoration:"underline",padding:0}}>
+              이 개체 삭제
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -837,8 +920,11 @@ function WeightSection({ lizard, upd }) {
           return(
             <div key={m} style={{display:"flex",flexDirection:"column",gap:4}}>
               <div style={{fontSize:10,color:isThis?C.accentDark:C.textMuted,textAlign:"center",fontWeight:isThis?700:400}}>{m+1}월</div>
-              <input type="number" value={val} onChange={e=>upd({weights:{...weights,[key]:e.target.value}})} placeholder="—"
-                style={{background:isThis?C.accentDark+"18":C.bg,border:isThis?`1.5px solid ${C.accentLight}`:"none",borderRadius:10,padding:"7px 3px",fontSize:12,color:isThis?C.accentDark:C.text,fontFamily:FB,textAlign:"center",outline:"none",width:"100%",boxSizing:"border-box",fontWeight:isThis?600:400}}/>
+              <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",background:isThis?C.accentDark+"18":C.bg,borderRadius:10,border:isThis?`1.5px solid ${C.accentLight}`:"none",padding:"7px 4px"}}>
+                <input type="number" value={val} onChange={e=>upd({weights:{...weights,[key]:e.target.value}})} placeholder="—"
+                  style={{background:"none",border:"none",fontSize:12,color:isThis?C.accentDark:C.text,fontFamily:FB,textAlign:"right",outline:"none",width:val?`${Math.max(String(val).length,1)*8}px`:"28px",minWidth:"16px",maxWidth:"100%",fontWeight:isThis?600:400,padding:0}}/>
+                {val&&<span style={{fontSize:9,color:isThis?C.accentDark:C.textMuted,fontFamily:FB,marginLeft:1,flexShrink:0}}>g</span>}
+              </div>
             </div>
           );
         })}
@@ -850,19 +936,71 @@ function WeightSection({ lizard, upd }) {
 // ── LOCALSTORAGE HELPERS
 const LS_LIZARDS = "llg_v2_lizards";
 const LS_LOGS    = "llg_v2_logs";
+const LS_PHOTOS  = "llg_v2_photos"; // 사진 별도 저장
 
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 }
 function lsSet(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch(e) {
+    if (e.name === "QuotaExceededError" || e.code === 22) {
+      alert("저장 공간이 부족해요. 오래된 사진을 삭제해보세요.");
+    }
+    return false;
+  }
+}
+
+// 사진만 따로 저장/로드 (logs에서 photo/photos 분리)
+function savePhotos(logs) {
+  const photos = {};
+  Object.entries(logs).forEach(([lid, days]) => {
+    Object.entries(days).forEach(([dkey, log]) => {
+      if (log.photo || (log.photos && log.photos.length > 0)) {
+        if (!photos[lid]) photos[lid] = {};
+        photos[lid][dkey] = { photo: log.photo||"", photos: log.photos||[] };
+      }
+    });
+  });
+  lsSet(LS_PHOTOS, photos);
+}
+
+function loadPhotos(logs) {
+  const photos = lsGet(LS_PHOTOS, {});
+  const merged = JSON.parse(JSON.stringify(logs));
+  Object.entries(photos).forEach(([lid, days]) => {
+    Object.entries(days).forEach(([dkey, p]) => {
+      if (!merged[lid]) merged[lid] = {};
+      if (!merged[lid][dkey]) merged[lid][dkey] = {};
+      merged[lid][dkey].photo = p.photo||"";
+      merged[lid][dkey].photos = p.photos||[];
+    });
+  });
+  return merged;
+}
+
+function saveLogsWithoutPhotos(logs) {
+  const stripped = {};
+  Object.entries(logs).forEach(([lid, days]) => {
+    stripped[lid] = {};
+    Object.entries(days).forEach(([dkey, log]) => {
+      const { photo, photos, ...rest } = log;
+      stripped[lid][dkey] = rest;
+    });
+  });
+  lsSet(LS_LOGS, stripped);
 }
 
 // ── APP
 function App() {
   const [lizards, setLizards] = useState(() => lsGet(LS_LIZARDS, INIT_LIZARDS));
-  const [logs, setLogs] = useState(() => lsGet(LS_LOGS, {}));
+  const [logs, setLogs] = useState(() => {
+    const base = lsGet(LS_LOGS, {});
+    return loadPhotos(base); // 사진 합쳐서 로드
+  });
   const [calYear, setCalYear] = useState(todayDate.getFullYear());
   const [calMonth, setCalMonth] = useState(todayDate.getMonth());
   const [activeLid, setActiveLid] = useState(() => {
@@ -871,9 +1009,12 @@ function App() {
   });
   const [tab, setTab] = useState("calendar");
 
-  // 데이터 변경 시 자동 저장
+  // 데이터 변경 시 자동 저장 — 사진은 별도 키에 저장
   useEffect(() => { lsSet(LS_LIZARDS, lizards); }, [lizards]);
-  useEffect(() => { lsSet(LS_LOGS, logs); }, [logs]);
+  useEffect(() => {
+    saveLogsWithoutPhotos(logs); // 일반 로그 (사진 제외)
+    savePhotos(logs);            // 사진만 별도 저장
+  }, [logs]);
 
   const activeLizard = lizards.find(l=>l.id===activeLid)||lizards[0]||null;
 
@@ -954,10 +1095,10 @@ function App() {
       {tab==="manage"&&<ManageView lizards={lizards} setLizards={setLizards} activeLid={activeLid} setActiveLid={setActiveLid}/>}
 
       {/* Bottom Nav */}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(240,244,238,0.96)",backdropFilter:"blur(16px)",borderTop:`1px solid ${C.border}`,display:"flex",zIndex:200,paddingBottom:"env(safe-area-inset-bottom)"}}>
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(240,244,238,0.96)",backdropFilter:"blur(16px)",borderTop:`1px solid ${C.border}`,display:"flex",zIndex:200,paddingBottom:"max(env(safe-area-inset-bottom), 12px)"}}>
         {NAV.map(n=>(
           <button key={n.id} onClick={()=>setTab(n.id)}
-            style={{flex:1,background:"none",border:"none",padding:"10px 0 8px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:tab===n.id?C.text:C.textLight,fontFamily:FB,transition:"color 0.15s"}}>
+            style={{flex:1,background:"none",border:"none",padding:"10px 0 6px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:tab===n.id?C.text:C.textLight,fontFamily:FB,transition:"color 0.15s"}}>
             {n.icon(tab===n.id)}
             <span style={{fontSize:10,fontWeight:tab===n.id?600:400,letterSpacing:"0.03em"}}>{n.label}</span>
           </button>
