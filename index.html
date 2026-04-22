@@ -226,6 +226,20 @@ function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards }
             })}
             {!(activeLizard.foods?.length)&&<span style={{fontSize:13,color:C.textMuted}}>아래에서 먹이를 추가해보세요</span>}
           </div>
+          {/* 급여량 */}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,color:C.textMuted,fontFamily:FB,flexShrink:0}}>급여량</span>
+            <div style={{display:"flex",alignItems:"baseline",gap:3,background:C.bg,borderRadius:8,padding:"6px 10px"}}>
+              <input type="number" value={lg.foodAmount||""} onChange={e=>u({foodAmount:e.target.value})} placeholder="—"
+                style={{background:"none",border:"none",fontSize:14,color:C.text,fontFamily:FB,outline:"none",width:`${Math.max((lg.foodAmount||"").toString().length,2)*9}px`,minWidth:"24px",maxWidth:"80px",textAlign:"right",fontWeight:600}}/>
+              {lg.foodAmount&&<span style={{fontSize:11,color:C.textMuted,fontFamily:FB}}>ml</span>}
+            </div>
+            <div style={{display:"flex",alignItems:"baseline",gap:3,background:C.bg,borderRadius:8,padding:"6px 10px"}}>
+              <input type="number" value={lg.foodCount||""} onChange={e=>u({foodCount:e.target.value})} placeholder="—"
+                style={{background:"none",border:"none",fontSize:14,color:C.text,fontFamily:FB,outline:"none",width:`${Math.max((lg.foodCount||"").toString().length,2)*9}px`,minWidth:"24px",maxWidth:"80px",textAlign:"right",fontWeight:600}}/>
+              {lg.foodCount&&<span style={{fontSize:11,color:C.textMuted,fontFamily:FB}}>마리</span>}
+            </div>
+          </div>
           <div style={{display:"flex",gap:8}}>
             <input style={{flex:1,background:C.bg,border:"none",borderRadius:12,padding:"10px 14px",fontSize:13,color:C.text,fontFamily:FB,outline:"none"}}
               placeholder="새 먹이 추가" value={newFood} onChange={e=>setNewFood(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addFoodToList()}/>
