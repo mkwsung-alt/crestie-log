@@ -9,6 +9,12 @@
   <title>도마뱀과 나</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet"/>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <!-- React -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,11 +26,26 @@
     input:focus,textarea:focus{outline:none;}
     ::-webkit-scrollbar{display:none;}
   </style>
+  <script>
+    // Firebase 초기화
+    const firebaseConfig = {
+      apiKey: "AIzaSyANOJnC5M7fChy7e3h99SXYydCe33qRZlM",
+      authDomain: "crestie-log.firebaseapp.com",
+      projectId: "crestie-log",
+      storageBucket: "crestie-log.firebasestorage.app",
+      messagingSenderId: "19449310690",
+      appId: "1:19449310690:web:e381b62e22c8c1f24eddbb"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+  </script>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
-const { useState, useCallback, useEffect } = React;
+const { useState, useCallback, useEffect, useRef } = React;
 
 
 // ── THEME (Daygram-inspired · 우윳빛 녹색 배경 유지)
@@ -147,7 +168,7 @@ function FoodBar({ items }) {
 }
 
 // ── DETAIL PANEL
-function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards }) {
+function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards, photoUrls, onUploadPhotos, onDeletePhoto }) {
   const [newFood, setNewFood] = useState("");
   const lg = getLog(logs, activeLizard.id, dkey);
   const u = (patch) => onUpdate(activeLizard.id, dkey, patch);
@@ -278,42 +299,39 @@ function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards }
         </div>
         <div style={divider}/>
 
-        {/* 사진 — 최대 4장 */}
+        {/* 사진 — 최대 4장 (Firebase Storage) */}
         <div style={sec}>
           <span style={secLabel}>사진</span>
-          {/* 등록된 사진 그리드 */}
-          {(lg.photos||[]).length > 0 && (
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-              {(lg.photos||[]).map((src,i)=>(
-                <div key={i} style={{position:"relative",borderRadius:14,overflow:"hidden"}}>
-                  <img src={src} alt="" style={{width:"100%",height:120,objectFit:"cover",display:"block"}}/>
-                  <button onClick={()=>u({photos:(lg.photos||[]).filter((_,j)=>j!==i)})}
-                    style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.5)",border:"none",borderRadius:"50%",width:24,height:24,color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-          {/* 추가 버튼 — 4장 미만일 때만 */}
-          {(lg.photos||[]).length < 4 && (
-            <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:C.bg,borderRadius:16,padding:"18px",cursor:"pointer",width:"100%",boxSizing:"border-box"}}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-                <polyline points="21 15 16 10 5 21"/>
-              </svg>
-              <span style={{fontSize:13,color:C.textMuted}}>사진 추가 ({(lg.photos||[]).length}/4)</span>
-              <input type="file" accept="image/*" multiple onChange={e=>{
-                const files = Array.from(e.target.files||[]);
-                const remaining = 4 - (lg.photos||[]).length;
-                const selected = files.slice(0, remaining);
-                if (!selected.length) return;
-                Promise.all(selected.map(file=>new Promise(res=>{
-                  const reader = new FileReader();
-                  reader.onload = ev => res(ev.target.result);
-                  reader.readAsDataURL(file);
-                }))).then(results => u({photos:[...(lg.photos||[]),...results]}));
-              }} style={{display:"none"}}/>
-            </label>
-          )}
+          {(() => {
+            const urls = (photoUrls && photoUrls[activeLizard.id] && photoUrls[activeLizard.id][dkey]) || [];
+            return (
+              <>
+                {urls.length > 0 && (
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                    {urls.map((src,i)=>(
+                      <div key={i} style={{position:"relative",borderRadius:14,overflow:"hidden"}}>
+                        <img src={src} alt="" style={{width:"100%",height:120,objectFit:"cover",display:"block"}}/>
+                        <button onClick={()=>onDeletePhoto&&onDeletePhoto(activeLizard.id,dkey,i)}
+                          style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.5)",border:"none",borderRadius:"50%",width:24,height:24,color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {urls.length < 4 && (
+                  <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:C.bg,borderRadius:16,padding:"18px",cursor:"pointer",width:"100%",boxSizing:"border-box"}}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span style={{fontSize:13,color:C.textMuted}}>사진 추가 ({urls.length}/4)</span>
+                    <input type="file" accept="image/*" multiple onChange={e=>{
+                      if(onUploadPhotos) onUploadPhotos(activeLizard.id, dkey, e.target.files);
+                    }} style={{display:"none"}}/>
+                  </label>
+                )}
+              </>
+            );
+          })()}
         </div>
         {/* 완료 버튼 */}
         <div style={{padding:"16px 22px 4px"}}>
@@ -326,7 +344,7 @@ function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards }
     </div>
   );
 }
-function DiaryView({ lizards, logs, activeLizard }) {
+function DiaryView({ lizards, logs, photoUrls, activeLizard }) {
   const [selYear, setSelYear] = useState(new Date().getFullYear());
   const [selMonth, setSelMonth] = useState(new Date().getMonth());
 
@@ -334,8 +352,9 @@ function DiaryView({ lizards, logs, activeLizard }) {
   const entries = Array.from({length:daysInMonth},(_,i)=>{
     const dkey = `${selYear}-${String(selMonth+1).padStart(2,"0")}-${String(i+1).padStart(2,"0")}`;
     const lg = activeLizard ? getLog(logs, activeLizard.id, dkey) : emptyLog();
-    return { dkey, memo: lg.memo||"", photo: lg.photo||"", photos: lg.photos||[] };
-  }).filter(e => e.memo || e.photo || e.photos.length>0).reverse();
+    const urls = (photoUrls && photoUrls[activeLizard.id] && photoUrls[activeLizard.id][dkey]) || [];
+    return { dkey, memo: lg.memo||"", photos: urls };
+  }).filter(e => e.memo || e.photos.length>0).reverse();
 
   const prevM = () => { if(selMonth===0){setSelMonth(11);setSelYear(y=>y-1);}else setSelMonth(m=>m-1); };
   const nextM = () => { if(selMonth===11){setSelMonth(0);setSelYear(y=>y+1);}else setSelMonth(m=>m+1); };
@@ -359,24 +378,18 @@ function DiaryView({ lizards, logs, activeLizard }) {
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {entries.map(({dkey, memo, photo, photos})=>{
+          {entries.map(({dkey, memo, photos})=>{
             const [y,m,d] = dkey.split("-").map(Number);
             const wd = WEEKDAYS[new Date(y,m-1,d).getDay()];
             return (
               <div key={dkey} style={{background:C.surface,borderRadius:8,boxShadow:C.shadow,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-                {(photo||(photos&&photos.length>0)) && (
-                <div>
-                  {photos&&photos.length>0 ? (
-                    <div style={{display:"grid",gridTemplateColumns:photos.length>1?"1fr 1fr":"1fr",gap:4}}>
-                      {photos.map((src,i)=>(
-                        <img key={i} src={src} alt="" style={{width:"100%",height:photos.length>1?120:180,objectFit:"cover",display:"block",borderRadius:i===0&&photos.length>1?"12px 0 0 0":i===1?"0 12px 0 0":i===2?"0 0 0 12px":"0 0 12px 0"}}/>
-                      ))}
-                    </div>
-                  ) : photo ? (
-                    <img src={photo} alt="" style={{width:"100%",maxHeight:180,objectFit:"cover",display:"block"}}/>
-                  ) : null}
-                </div>
-              )}
+                {photos.length>0 && (
+                  <div style={{display:"grid",gridTemplateColumns:photos.length>1?"1fr 1fr":"1fr",gap:4}}>
+                    {photos.map((src,i)=>(
+                      <img key={i} src={src} alt="" style={{width:"100%",height:photos.length>1?120:180,objectFit:"cover",display:"block"}}/>
+                    ))}
+                  </div>
+                )}
                 <div style={{padding:"14px 16px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                     <div style={{fontFamily:FT,fontSize:15,color:C.accentDark}}>{m}월 {d}일</div>
@@ -395,7 +408,7 @@ function DiaryView({ lizards, logs, activeLizard }) {
 }
 
 // ── CALENDAR VIEW
-function CalendarView({ lizards, logs, activeLizard, onUpdate, calYear, calMonth, prevMonth, nextMonth, setLizards }) {
+function CalendarView({ lizards, logs, photoUrls, activeLizard, onUpdate, onUploadPhotos, onDeletePhoto, calYear, calMonth, prevMonth, nextMonth, setLizards }) {
   const [detailDk, setDetailDk] = useState(null);
   const daysInMonth = getDaysInMonth(calYear, calMonth);
   const firstDay = getFirstDay(calYear, calMonth);
@@ -487,7 +500,7 @@ function CalendarView({ lizards, logs, activeLizard, onUpdate, calYear, calMonth
         </div>
       )}
       {detailDk&&activeLizard&&(
-        <DetailPanel dkey={detailDk} activeLizard={activeLizard} logs={logs} onUpdate={onUpdate} onClose={()=>setDetailDk(null)} setLizards={setLizards}/>
+        <DetailPanel dkey={detailDk} activeLizard={activeLizard} logs={logs} onUpdate={onUpdate} onClose={()=>setDetailDk(null)} setLizards={setLizards} photoUrls={photoUrls} onUploadPhotos={onUploadPhotos} onDeletePhoto={onDeletePhoto}/>
       )}
     </div>
   );
@@ -673,7 +686,7 @@ function StatsView({ lizards, logs, activeLizard, calYear, calMonth, prevMonth, 
 }
 
 // ── MANAGE VIEW — passport cards shown directly, no list
-function ManageView({ lizards, setLizards, activeLid, setActiveLid }) {
+function ManageView({ lizards, setLizards, activeLid, setActiveLid, onUploadLizardPhoto }) {
   const [newName, setNewName] = useState("");
 
   const addLizard = () => {
@@ -695,7 +708,7 @@ function ManageView({ lizards, setLizards, activeLid, setActiveLid }) {
   return (
     <div style={{padding:"4px 16px 8px",fontFamily:FB}}>
       <div style={{fontFamily:FT,fontSize:22,color:C.text,padding:"14px 0 14px"}}>가족 목록</div>
-      {lizards.map(l => <InlinePassportCard key={l.id} lizard={l} setLizards={setLizards} onDelete={()=>removeLizard(l.id)}/>)}
+      {lizards.map(l => <InlinePassportCard key={l.id} lizard={l} setLizards={setLizards} onDelete={()=>removeLizard(l.id)} onUploadLizardPhoto={onUploadLizardPhoto}/>)}
       <div style={{display:"flex",gap:8,marginTop:4,paddingBottom:8}}>
         <input style={inp} placeholder="새 도마뱀 이름" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addLizard()}/>
         <button style={btn} onClick={addLizard}>+ 추가</button>
@@ -755,7 +768,7 @@ function DateInput({ value, onChange }) {
 }
 
 // ── INLINE PASSPORT CARD
-function InlinePassportCard({ lizard, setLizards, onDelete }) {
+function InlinePassportCard({ lizard, setLizards, onDelete, onUploadLizardPhoto }) {
   const [editing, setEditing] = useState(false);
   const [newFood, setNewFood] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -766,9 +779,7 @@ function InlinePassportCard({ lizard, setLizards, onDelete }) {
 
   const handlePhoto = (e) => {
     const file = e.target.files?.[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({photo:ev.target.result});
-    reader.readAsDataURL(file);
+    if(onUploadLizardPhoto) onUploadLizardPhoto(lizard.id, file);
   };
   const addFood = () => {
     const val=newFood.trim(); if(!val) return;
@@ -947,97 +958,257 @@ function WeightSection({ lizard, upd }) {
   );
 }
 
-// ── LOCALSTORAGE HELPERS
-const LS_LIZARDS = "llg_v2_lizards";
-const LS_LOGS    = "llg_v2_logs";
-const LS_PHOTOS  = "llg_v2_photos"; // 사진 별도 저장
-
-function lsGet(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-  catch { return fallback; }
-}
-function lsSet(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch(e) {
-    if (e.name === "QuotaExceededError" || e.code === 22) {
-      alert("저장 공간이 부족해요. 오래된 사진을 삭제해보세요.");
-    }
-    return false;
-  }
-}
-
-// 사진만 따로 저장/로드 (logs에서 photo/photos 분리)
-function savePhotos(logs) {
-  const photos = {};
-  Object.entries(logs).forEach(([lid, days]) => {
-    Object.entries(days).forEach(([dkey, log]) => {
-      if (log.photo || (log.photos && log.photos.length > 0)) {
-        if (!photos[lid]) photos[lid] = {};
-        photos[lid][dkey] = { photo: log.photo||"", photos: log.photos||[] };
-      }
-    });
+// ── FIREBASE HELPERS
+async function fbSaveLizards(uid, lizards) {
+  const stripped = lizards.map(l => {
+    const { photo, ...rest } = l;
+    return rest;
   });
-  lsSet(LS_PHOTOS, photos);
+  await db.collection('users').doc(uid).set({ lizards: stripped }, { merge: true });
 }
 
-function loadPhotos(logs) {
-  const photos = lsGet(LS_PHOTOS, {});
-  const merged = JSON.parse(JSON.stringify(logs));
-  Object.entries(photos).forEach(([lid, days]) => {
-    Object.entries(days).forEach(([dkey, p]) => {
-      if (!merged[lid]) merged[lid] = {};
-      if (!merged[lid][dkey]) merged[lid][dkey] = {};
-      merged[lid][dkey].photo = p.photo||"";
-      merged[lid][dkey].photos = p.photos||[];
-    });
-  });
-  return merged;
+async function fbSaveLizardPhoto(uid, lizardId, file) {
+  if (!file) return null;
+  const ref = storage.ref(`users/${uid}/lizards/${lizardId}/photo`);
+  await ref.put(file);
+  return await ref.getDownloadURL();
 }
 
-function saveLogsWithoutPhotos(logs) {
+async function fbSaveLogs(uid, logs) {
+  // Strip photos from logs (stored separately)
   const stripped = {};
   Object.entries(logs).forEach(([lid, days]) => {
     stripped[lid] = {};
     Object.entries(days).forEach(([dkey, log]) => {
-      const { photo, photos, ...rest } = log;
+      const { photos, photo, ...rest } = log;
       stripped[lid][dkey] = rest;
     });
   });
-  lsSet(LS_LOGS, stripped);
+  await db.collection('users').doc(uid).set({ logs: stripped }, { merge: true });
 }
 
-// ── APP
+async function fbSavePhoto(uid, lid, dkey, photoFile, index) {
+  const ref = storage.ref(`users/${uid}/logs/${lid}/${dkey}/photo_${index}`);
+  await ref.put(photoFile);
+  return await ref.getDownloadURL();
+}
+
+async function fbDeletePhoto(uid, lid, dkey, index) {
+  try {
+    const ref = storage.ref(`users/${uid}/logs/${lid}/${dkey}/photo_${index}`);
+    await ref.delete();
+  } catch(e) {}
+}
+
+async function fbLoadAll(uid) {
+  const doc = await db.collection('users').doc(uid).get();
+  if (!doc.exists) return { lizards: [], logs: {} };
+  const data = doc.data();
+  return {
+    lizards: data.lizards || [],
+    logs: data.logs || {},
+    photoUrls: data.photoUrls || {}
+  };
+}
+
+async function fbSavePhotoUrl(uid, lid, dkey, urls) {
+  const key = `photoUrls.${lid}.${dkey}`;
+  await db.collection('users').doc(uid).update({ [key]: urls });
+}
+
+// ── LOGIN SCREEN
+function LoginScreen({ onLogin }) {
+  const [loading, setLoading] = useState(false);
+  const handleGoogle = async () => {
+    setLoading(true);
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+    } catch(e) {
+      alert('로그인에 실패했어요. 다시 시도해주세요.');
+      setLoading(false);
+    }
+  };
+  return (
+    <div style={{minHeight:'100vh',background:'#f0f4ee',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:"'Noto Sans KR',sans-serif",padding:'0 32px'}}>
+      <div style={{fontSize:48,marginBottom:16}}>🦎</div>
+      <div style={{fontFamily:"'Noto Serif KR',serif",fontSize:26,fontWeight:600,color:'#2c2417',marginBottom:8}}>도마뱀과 나</div>
+      <div style={{fontSize:13,color:'#8c7f6e',marginBottom:48,textAlign:'center',lineHeight:1.7}}>소중한 아이의 기록을<br/>안전하게 보관해요</div>
+      <button onClick={handleGoogle} disabled={loading}
+        style={{display:'flex',alignItems:'center',gap:12,background:'#fff',border:'1px solid #e2ddd4',borderRadius:8,padding:'13px 24px',fontSize:14,cursor:'pointer',fontFamily:"'Noto Sans KR',sans-serif",color:'#2c2417',boxShadow:'0 1px 12px rgba(60,45,20,0.07)',width:'100%',maxWidth:280,justifyContent:'center'}}>
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        {loading ? '로그인 중...' : 'Google로 시작하기'}
+      </button>
+    </div>
+  );
+}
+
+// ── LOADING SCREEN
+function LoadingScreen({ message }) {
+  return (
+    <div style={{minHeight:'100vh',background:'#f0f4ee',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
+      <div style={{fontSize:40}}>🦎</div>
+      <div style={{fontSize:13,color:'#8c7f6e',fontFamily:"'Noto Sans KR',sans-serif"}}>{message||'불러오는 중...'}</div>
+    </div>
+  );
+}
+
+// ── APP (Firebase version)
 function App() {
-  const [lizards, setLizards] = useState(() => lsGet(LS_LIZARDS, INIT_LIZARDS));
-  const [logs, setLogs] = useState(() => {
-    const base = lsGet(LS_LOGS, {});
-    return loadPhotos(base); // 사진 합쳐서 로드
-  });
+  const [user, setUser] = useState(undefined); // undefined=loading, null=not logged in
+  const [lizards, setLizards] = useState([]);
+  const [logs, setLogs] = useState({});
+  const [photoUrls, setPhotoUrls] = useState({}); // {lid: {dkey: [url,url,...]}}
   const [calYear, setCalYear] = useState(todayDate.getFullYear());
   const [calMonth, setCalMonth] = useState(todayDate.getMonth());
-  const [activeLid, setActiveLid] = useState(() => {
-    const saved = lsGet(LS_LIZARDS, INIT_LIZARDS);
-    return saved[0]?.id || INIT_LIZARDS[0].id;
-  });
-  const [tab, setTab] = useState("calendar");
+  const [activeLid, setActiveLid] = useState('');
+  const [tab, setTab] = useState('calendar');
+  const [dataLoading, setDataLoading] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [hasMigratable, setHasMigratable] = useState(false);
+  const saveTimer = useRef(null);
 
-  // 데이터 변경 시 자동 저장 — 사진은 별도 키에 저장
-  useEffect(() => { lsSet(LS_LIZARDS, lizards); }, [lizards]);
+  // Auth state
   useEffect(() => {
-    saveLogsWithoutPhotos(logs); // 일반 로그 (사진 제외)
-    savePhotos(logs);            // 사진만 별도 저장
+    return auth.onAuthStateChanged(async (u) => {
+      setUser(u);
+      if (u) {
+        setDataLoading(true);
+        try {
+          const data = await fbLoadAll(u.uid);
+          if (data.lizards.length > 0) {
+            setLizards(data.lizards);
+            setLogs(data.logs);
+            setPhotoUrls(data.photoUrls || {});
+            setActiveLid(data.lizards[0]?.id || '');
+          } else {
+            // 새 유저 — localStorage에 기존 데이터 있는지 확인
+            const oldLizards = localStorage.getItem('llg_v2_lizards');
+            if (oldLizards) {
+              const parsed = JSON.parse(oldLizards);
+              if (parsed && parsed.length > 0) setHasMigratable(true);
+            }
+          }
+        } catch(e) {
+          console.error(e);
+        }
+        setDataLoading(false);
+      }
+    });
+  }, []);
+
+  // Auto-save lizards & logs (debounced)
+  useEffect(() => {
+    if (!user || lizards.length === 0) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fbSaveLizards(user.uid, lizards).catch(console.error);
+    }, 1000);
+  }, [lizards]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fbSaveLogs(user.uid, logs).catch(console.error);
+    }, 1000);
   }, [logs]);
 
-  const activeLizard = lizards.find(l=>l.id===activeLid)||lizards[0]||null;
+  // Migrate from localStorage
+  const migrate = async () => {
+    setMigrating(true);
+    try {
+      const oldLizards = JSON.parse(localStorage.getItem('llg_v2_lizards') || '[]');
+      const oldLogs = JSON.parse(localStorage.getItem('llg_v2_logs') || '{}');
+      const oldPhotos = JSON.parse(localStorage.getItem('llg_v2_photos') || '{}');
+
+      // Merge photos into logs
+      Object.entries(oldPhotos).forEach(([lid, days]) => {
+        Object.entries(days).forEach(([dkey, p]) => {
+          if (!oldLogs[lid]) oldLogs[lid] = {};
+          if (!oldLogs[lid][dkey]) oldLogs[lid][dkey] = {};
+          if (p.photos) oldLogs[lid][dkey].photos = p.photos;
+        });
+      });
+
+      setLizards(oldLizards);
+      setLogs(oldLogs);
+      setActiveLid(oldLizards[0]?.id || '');
+
+      await fbSaveLizards(user.uid, oldLizards);
+      await fbSaveLogs(user.uid, oldLogs);
+      setHasMigratable(false);
+    } catch(e) {
+      alert('이전 중 오류가 발생했어요.');
+    }
+    setMigrating(false);
+  };
+
+  const activeLizard = lizards.find(l => l.id === activeLid) || lizards[0] || null;
 
   const onUpdate = useCallback((lid, dkey, patch) => {
-    setLogs(prev=>({
+    setLogs(prev => ({
       ...prev,
       [lid]: { ...prev[lid], [dkey]: { ...getLog(prev, lid, dkey), ...patch } }
     }));
   }, []);
+
+  // Photo upload to Firebase Storage
+  const onUploadPhotos = useCallback(async (lid, dkey, files) => {
+    if (!user) return;
+    const existingUrls = photoUrls[lid]?.[dkey] || [];
+    const remaining = 4 - existingUrls.length;
+    const selected = Array.from(files).slice(0, remaining);
+    if (!selected.length) return;
+    const newUrls = [];
+    for (let i = 0; i < selected.length; i++) {
+      const idx = existingUrls.length + i;
+      const ref = storage.ref(`users/${user.uid}/logs/${lid}/${dkey}/photo_${idx}`);
+      await ref.put(selected[i]);
+      const url = await ref.getDownloadURL();
+      newUrls.push(url);
+    }
+    const updated = [...existingUrls, ...newUrls];
+    setPhotoUrls(prev => ({
+      ...prev,
+      [lid]: { ...prev[lid], [dkey]: updated }
+    }));
+    await db.collection('users').doc(user.uid).update({
+      [`photoUrls.${lid}.${dkey}`]: updated
+    });
+  }, [user, photoUrls]);
+
+  const onDeletePhoto = useCallback(async (lid, dkey, idx) => {
+    if (!user) return;
+    const existingUrls = photoUrls[lid]?.[dkey] || [];
+    // Delete from storage
+    try {
+      const ref = storage.ref(`users/${user.uid}/logs/${lid}/${dkey}/photo_${idx}`);
+      await ref.delete();
+    } catch(e) {}
+    const updated = existingUrls.filter((_, i) => i !== idx);
+    setPhotoUrls(prev => ({
+      ...prev,
+      [lid]: { ...prev[lid], [dkey]: updated }
+    }));
+    await db.collection('users').doc(user.uid).update({
+      [`photoUrls.${lid}.${dkey}`]: updated
+    });
+  }, [user, photoUrls]);
+
+  // Lizard photo upload
+  const onUploadLizardPhoto = useCallback(async (lizardId, file) => {
+    if (!user || !file) return;
+    const ref = storage.ref(`users/${user.uid}/lizards/${lizardId}/photo`);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    setLizards(prev => prev.map(l => l.id === lizardId ? {...l, photo: url} : l));
+  }, [user]);
 
   const prevMonth = () => { if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); };
   const nextMonth = () => { if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); };
@@ -1045,10 +1216,8 @@ function App() {
   const NAV = [
     { id:"calendar", label:"캘린더", icon:(active)=>(
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active?C.text:C.textLight} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="3"/>
-        <line x1="3" y1="9" x2="21" y2="9"/>
-        <line x1="8" y1="2" x2="8" y2="6"/>
-        <line x1="16" y1="2" x2="16" y2="6"/>
+        <rect x="3" y="4" width="18" height="18" rx="3"/><line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>
         <circle cx="8" cy="14" r="1" fill={active?C.text:C.textLight}/>
         <circle cx="12" cy="14" r="1" fill={active?C.text:C.textLight}/>
         <circle cx="16" cy="14" r="1" fill={active?C.text:C.textLight}/>
@@ -1058,8 +1227,7 @@ function App() {
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active?C.text:C.textLight} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
+        <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
         <line x1="10" y1="9" x2="8" y2="9"/>
       </svg>
     )},
@@ -1070,43 +1238,65 @@ function App() {
     )},
     { id:"manage", label:"호적", icon:(active)=>(
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active?C.text:C.textLight} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="8" r="4"/>
-        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+        <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
       </svg>
     )},
   ];
+
+  // Auth loading
+  if (user === undefined || dataLoading) return <LoadingScreen message="불러오는 중..."/>;
+  if (!user) return <LoginScreen onLogin={()=>{}}/>;
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:FB,color:C.text,maxWidth:430,margin:"0 auto",paddingBottom:72}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
         *{box-sizing:border-box;}
-        body{margin:0;background:${C.bg};}
+        body{margin:0;background:#f0f4ee;}
         input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
         input:focus,textarea:focus{outline:none;}
         ::-webkit-scrollbar{display:none;}
-        /* 종이 질감 느낌 */
-        textarea, input { font-family: '${FS}', serif; }
       `}</style>
+
+      {/* 기존 데이터 마이그레이션 배너 */}
+      {hasMigratable && (
+        <div style={{background:C.accentDark,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div style={{fontSize:12,color:"#fff",fontFamily:FB,lineHeight:1.5}}>기존 기록이 있어요.<br/>불러올까요?</div>
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <button onClick={migrate} disabled={migrating}
+              style={{background:"#fff",color:C.accentDark,border:"none",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontFamily:FB,fontWeight:600}}>
+              {migrating ? "이전 중..." : "불러오기"}
+            </button>
+            <button onClick={()=>setHasMigratable(false)}
+              style={{background:"transparent",color:"rgba(255,255,255,0.7)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,padding:"6px 10px",fontSize:12,cursor:"pointer",fontFamily:FB}}>
+              무시
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{background:C.bg,padding:"14px 20px 10px",position:"sticky",top:0,zIndex:100,borderBottom:`1px solid ${C.border}`}}>
-        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2,alignItems:"center"}}>
           {lizards.map(l=>(
             <button key={l.id} onClick={()=>setActiveLid(l.id)}
               style={{flexShrink:0,background:activeLid===l.id?C.text:C.surface,color:activeLid===l.id?C.surface:C.textMuted,border:`1px solid ${activeLid===l.id?C.text:C.border}`,borderRadius:6,padding:"6px 16px",fontSize:13,cursor:"pointer",fontFamily:FT,fontWeight:activeLid===l.id?600:400,letterSpacing:"0.02em",transition:"all 0.15s"}}>
               {l.name}
             </button>
           ))}
-          {lizards.length===0&&<span style={{fontSize:13,color:C.textMuted,padding:"7px 4px",fontFamily:FT}}>개체를 추가해주세요</span>}
+          {lizards.length===0&&<span style={{fontSize:13,color:C.textMuted,padding:"7px 4px",fontFamily:FT}}>호적 탭에서 추가해주세요</span>}
+          {/* 로그아웃 */}
+          <button onClick={()=>auth.signOut()} style={{marginLeft:"auto",flexShrink:0,background:"none",border:"none",fontSize:11,color:C.textLight,cursor:"pointer",fontFamily:FB}}>
+            로그아웃
+          </button>
         </div>
       </div>
 
       {/* Views */}
-      {tab==="calendar"&&<CalendarView lizards={lizards} logs={logs} activeLizard={activeLizard} onUpdate={onUpdate} calYear={calYear} calMonth={calMonth} prevMonth={prevMonth} nextMonth={nextMonth} setLizards={setLizards}/>}
-      {tab==="diary"&&<DiaryView lizards={lizards} logs={logs} activeLizard={activeLizard}/>}
+      {tab==="calendar"&&<CalendarView lizards={lizards} logs={logs} photoUrls={photoUrls} activeLizard={activeLizard} onUpdate={onUpdate} onUploadPhotos={onUploadPhotos} onDeletePhoto={onDeletePhoto} calYear={calYear} calMonth={calMonth} prevMonth={prevMonth} nextMonth={nextMonth} setLizards={setLizards}/>}
+      {tab==="diary"&&<DiaryView lizards={lizards} logs={logs} photoUrls={photoUrls} activeLizard={activeLizard}/>}
       {tab==="stats"&&<StatsView lizards={lizards} logs={logs} activeLizard={activeLizard} calYear={calYear} calMonth={calMonth} prevMonth={prevMonth} nextMonth={nextMonth}/>}
-      {tab==="manage"&&<ManageView lizards={lizards} setLizards={setLizards} activeLid={activeLid} setActiveLid={setActiveLid}/>}
+      {tab==="manage"&&<ManageView lizards={lizards} setLizards={setLizards} activeLid={activeLid} setActiveLid={setActiveLid} onUploadLizardPhoto={onUploadLizardPhoto}/>}
 
       {/* Bottom Nav */}
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(240,244,238,0.96)",backdropFilter:"blur(16px)",borderTop:`1px solid ${C.border}`,display:"flex",zIndex:200,paddingBottom:"max(env(safe-area-inset-bottom), 12px)"}}>
