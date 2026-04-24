@@ -310,7 +310,8 @@ function DetailPanel({ dkey, activeLizard, logs, onUpdate, onClose, setLizards, 
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                     {urls.map((src,i)=>(
                       <div key={i} style={{position:"relative",borderRadius:14,overflow:"hidden"}}>
-                        <img src={src} alt="" style={{width:"100%",height:120,objectFit:"cover",display:"block"}}/>
+                        <img src={src} alt="" style={{width:"100%",height:120,objectFit:"cover",display:"block"}}
+                    onError={e=>{e.target.style.display="none";}}/>
                         <button onClick={()=>onDeletePhoto&&onDeletePhoto(activeLizard.id,dkey,i)}
                           style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.5)",border:"none",borderRadius:"50%",width:24,height:24,color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
                       </div>
@@ -386,7 +387,8 @@ function DiaryView({ lizards, logs, photoUrls, activeLizard }) {
                 {photos.length>0 && (
                   <div style={{display:"grid",gridTemplateColumns:photos.length>1?"1fr 1fr":"1fr",gap:4}}>
                     {photos.map((src,i)=>(
-                      <img key={i} src={src} alt="" style={{width:"100%",height:photos.length>1?120:180,objectFit:"cover",display:"block"}}/>
+                      <img key={i} src={src} alt="" style={{width:"100%",height:photos.length>1?120:180,objectFit:"cover",display:"block"}}
+                        onError={e=>{e.target.style.display="none";}}/>
                     ))}
                   </div>
                 )}
@@ -1012,8 +1014,9 @@ async function fbLoadAll(uid) {
 }
 
 async function fbSavePhotoUrl(uid, lid, dkey, urls) {
-  const key = `photoUrls.${lid}.${dkey}`;
-  await db.collection('users').doc(uid).update({ [key]: urls });
+  await db.collection('users').doc(uid).set({
+    photoUrls: { [lid]: { [dkey]: urls } }
+  }, { merge: true });
 }
 
 // ── LOGIN SCREEN
@@ -1159,29 +1162,62 @@ function App() {
   }, []);
 
   // Photo upload to Firebase Storage
+  // 이미지 압축 함수 (Canvas 리사이즈)
+  const compressImage = (file) => new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(resolve, 'image/jpeg', 0.75);
+    };
+    img.src = url;
+  });
+
+  const photoUrlsRef = useRef(photoUrls);
+  useEffect(() => { photoUrlsRef.current = photoUrls; }, [photoUrls]);
+
   const onUploadPhotos = useCallback(async (lid, dkey, files) => {
     if (!user) return;
-    const existingUrls = photoUrls[lid]?.[dkey] || [];
-    const remaining = 4 - existingUrls.length;
-    const selected = Array.from(files).slice(0, remaining);
-    if (!selected.length) return;
-    const newUrls = [];
-    for (let i = 0; i < selected.length; i++) {
-      const idx = existingUrls.length + i;
-      const ref = storage.ref(`users/${user.uid}/logs/${lid}/${dkey}/photo_${idx}`);
-      await ref.put(selected[i]);
-      const url = await ref.getDownloadURL();
-      newUrls.push(url);
+    try {
+      // useRef로 항상 최신 photoUrls 참조 (stale closure 방지)
+      const existingUrls = photoUrlsRef.current[lid]?.[dkey] || [];
+      const remaining = 4 - existingUrls.length;
+      const selected = Array.from(files).slice(0, remaining);
+      if (!selected.length) return;
+      const newUrls = [];
+      for (let i = 0; i < selected.length; i++) {
+        const compressed = await compressImage(selected[i]);
+        const idx = existingUrls.length + i;
+        const ref = storage.ref(`users/${user.uid}/logs/${lid}/${dkey}/photo_${idx}_${Date.now()}`);
+        const snapshot = await ref.put(compressed);
+        // getDownloadURL을 snapshot에서 직접 가져와서 타이밍 문제 방지
+        const url = await snapshot.ref.getDownloadURL();
+        newUrls.push(url);
+      }
+      const updated = [...existingUrls, ...newUrls];
+      // 상태 먼저 업데이트
+      setPhotoUrls(prev => ({
+        ...prev,
+        [lid]: { ...prev[lid], [dkey]: updated }
+      }));
+      // Firestore 저장
+      await db.collection('users').doc(user.uid).set({
+        photoUrls: { [lid]: { [dkey]: updated } }
+      }, { merge: true });
+    } catch(e) {
+      console.error('사진 업로드 실패:', e);
+      alert('사진 업로드에 실패했어요: ' + e.message);
     }
-    const updated = [...existingUrls, ...newUrls];
-    setPhotoUrls(prev => ({
-      ...prev,
-      [lid]: { ...prev[lid], [dkey]: updated }
-    }));
-    await db.collection('users').doc(user.uid).update({
-      [`photoUrls.${lid}.${dkey}`]: updated
-    });
-  }, [user, photoUrls]);
+  }, [user]);
 
   const onDeletePhoto = useCallback(async (lid, dkey, idx) => {
     if (!user) return;
@@ -1196,9 +1232,9 @@ function App() {
       ...prev,
       [lid]: { ...prev[lid], [dkey]: updated }
     }));
-    await db.collection('users').doc(user.uid).update({
-      [`photoUrls.${lid}.${dkey}`]: updated
-    });
+    await db.collection('users').doc(user.uid).set({
+      photoUrls: { [lid]: { [dkey]: updated } }
+    }, { merge: true });
   }, [user, photoUrls]);
 
   // Lizard photo upload
